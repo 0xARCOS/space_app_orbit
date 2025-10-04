@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Demo CGR con Inter-Satellite Links</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.95/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.95/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #cesiumContainer { width: 100vw; height: 100vh; }
+        
+        .panel {
+            position: absolute;
+            background: rgba(20, 20, 30, 0.92);
+            color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+        }
+        
+        #controlPanel {
+            top: 20px;
+            left: 20px;
+            width: 320px;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+        
+        #metricsPanel {
+            top: 20px;
+            right: 20px;
+            width: 280px;
+        }
+        
+        h2 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #4fc3f7;
+            border-bottom: 2px solid #4fc3f7;
+            padding-bottom: 8px;
+        }
+        
+        h3 {
+            margin: 15px 0 10px 0;
+            font-size: 14px;
+            color: #81d4fa;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: #b0bec5;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            margin: 5px 0;
+        }
+        
+        input[type="number"] {
+            width: 100%;
+            padding: 6px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
+            color: #fff;
+        }
+        
+        button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        .metric-label {
+            color: #b0bec5;
+        }
+        
+        .metric-value {
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+        
+        .link-type {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin: 2px;
+        }
+        
+        .optical { background: #2196f3; }
+        .rf { background: #ff9800; }
+        
+        .status {
+            padding: 8px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .status.active { background: rgba(76, 175, 80, 0.2); border-left: 3px solid #4caf50; }
+        .status.warning { background: rgba(255, 152, 0, 0.2); border-left: 3px solid #ff9800; }
+        
+        .value-display {
+            display: inline-block;
+            background: rgba(79, 195, 247, 0.2);
+            padding: 2px 8px;
+            border-radius: 3px;
+            margin-left: 5px;
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(79, 195, 247, 0.5);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="cesiumContainer"></div>
+    
+    <div id="controlPanel" class="panel">
+        <h2>🛰️ Control CGR + ISL</h2>
+        
+        <div class="control-group">
+            <label>Número de Satélites: <span class="value-display" id="satCountDisplay">12</span></label>
+            <input type="range" id="satCount" min="6" max="24" value="12" step="6">
+        </div>
+        
+        <div class="control-group">
+            <label>Altitud (km): <span class="value-display" id="altDisplay">550</span></label>
+            <input type="range" id="altitude" min="400" max="1200" value="550" step="50">
+        </div>
+        
+        <div class="control-group">
+            <label>Velocidad Simulación: <span class="value-display" id="speedDisplay">30x</span></label>
+            <input type="range" id="simSpeed" min="1" max="100" value="30">
+        </div>
+        
+        <h3>Tipos de Enlaces ISL</h3>
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="showOptical" checked> 
+                <span class="link-type optical">Ópticos</span> (100+ Gbps)
+            </label>
+            <label>
+                <input type="checkbox" id="showRF" checked> 
+                <span class="link-type rf">RF</span> (Backup/Adquisición)
+            </label>
+        </div>
+        
+        <h3>Routing CGR</h3>
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="showRouting" checked> Mostrar Ruta Activa
+            </label>
+            <label>
+                <input type="checkbox" id="showContacts" checked> Ventanas de Contacto
+            </label>
+        </div>
+        
+        <button onclick="calculateRoute()">🔄 Calcular Nueva Ruta</button>
+        <button onclick="toggleAnimation()">⏯️ Play/Pause</button>
+        <button onclick="resetView()">🎯 Resetear Vista</button>
+        
+        <div class="status active" id="statusDisplay">
+            Sistema activo - CGR operativo
+        </div>
+    </div>
+    
+    <div id="metricsPanel" class="panel">
+        <h2>📊 Métricas en Tiempo Real</h2>
+        
+        <div class="metric">
+            <span class="metric-label">Enlaces ISL Activos:</span>
+            <span class="metric-value" id="activeLinks">0</span>
+        </div>
+        
+        <div class="metric">
+            <span class="metric-label">Throughput Total:</span>
+            <span class="metric-value" id="throughput">0 Gbps</span>
+        </div>
+        
+        <div class="metric">
+            <span class="metric-label">Latencia E2E:</span>
+            <span class="metric-value" id="latency">0 ms</span>
+        </div>
+        
+        <div class="metric">
+            <span class="metric-label">Saltos CGR:</span>
+            <span class="metric-value" id="hops">0</span>
+        </div>
+        
+        <div class="metric">
+            <span class="metric-label">Cobertura:</span>
+            <span class="metric-value" id="coverage">0%</span>
+        </div>
+        
+        <h3>Contactos Previstos</h3>
+        <div id="contactList" style="max-height: 200px; overflow-y: auto; font-size: 11px;">
+            <!-- Se llenará dinámicamente -->
+        </div>
+        
+        <h3>Estado de Red DTN</h3>
+        <div class="metric">
+            <span class="metric-label">BPv7 Bundles:</span>
+            <span class="metric-value" id="bundles">0</span>
+        </div>
+        <div class="metric">
+            <span class="metric-label">Store & Forward:</span>
+            <span class="metric-value" id="stored">0 MB</span>
+        </div>
+    </div>
+
+    <script>
+        // Inicializar Cesium
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI5N2UyMjcwOS00MDY1LTQxYjEtYjZjMy00YTU0ZTg1YmJhMzEiLCJpZCI6ODAzMDYsImlhdCI6MTY0Mjc0ODI2MX0.dkwAL1CcljUV7NA7fDbhXXnmyZQU_c-G5zRx8PtEcxE';
+        
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            terrainProvider: Cesium.createWorldTerrain(),
+            imageryProvider: new Cesium.IonImageryProvider({ assetId: 3845 }),
+            baseLayerPicker: false,
+            geocoder: false,
+            homeButton: false,
+            sceneModePicker: false,
+            timeline: true,
+            animation: true,
+            navigationHelpButton: false,
+            fullscreenButton: false
+        });
+
+        // Estado global
+        let satellites = [];
+        let links = [];
+        let activeRoute = [];
+        let isAnimating = true;
+        let simulationTime = Cesium.JulianDate.now();
+        
+        // Configuración
+        const EARTH_RADIUS = 6371; // km
+        let config = {
+            satCount: 12,
+            altitude: 550,
+            simSpeed: 30,
+            showOptical: true,
+            showRF: true,
+            showRouting: true,
+            showContacts: true
+        };
+
+        // Crear constelación de satélites
+        function createConstellation() {
+            // Limpiar satélites anteriores
+            satellites.forEach(sat => viewer.entities.remove(sat.entity));
+            satellites = [];
+            links.forEach(link => viewer.entities.remove(link));
+            links = [];
+
+            const numPlanes = 3;
+            const satsPerPlane = config.satCount / numPlanes;
+            const inclination = 53; // grados
+
+            for (let plane = 0; plane < numPlanes; plane++) {
+                const raan = (plane * 360) / numPlanes;
+                
+                for (let sat = 0; sat < satsPerPlane; sat++) {
+                    const meanAnomaly = (sat * 360) / satsPerPlane;
+                    
+                    const satEntity = viewer.entities.add({
+                        name: `SAT-${plane}-${sat}`,
+                        position: new Cesium.CallbackProperty(() => {
+                            return calculateSatellitePosition(
+                                config.altitude,
+                                inclination,
+                                raan,
+                                meanAnomaly + (Cesium.JulianDate.secondsDifference(viewer.clock.currentTime, simulationTime) / 60)
+                            );
+                        }, false),
+                        point: {
+                            pixelSize: 8,
+                            color: Cesium.Color.CYAN,
+                            outlineColor: Cesium.Color.WHITE,
+                            outlineWidth: 2
+                        },
+                        label: {
+                            text: `SAT-${plane}-${sat}`,
+                            font: '12px sans-serif',
+                            fillColor: Cesium.Color.WHITE,
+                            outlineColor: Cesium.Color.BLACK,
+                            outlineWidth: 2,
+                            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                            pixelOffset: new Cesium.Cartesian2(0, -15),
+                            show: true
+                        }
+                    });
+
+                    satellites.push({
+                        entity: satEntity,
+                        id: `${plane}-${sat}`,
+                        plane: plane,
+                        index: sat,
+                        capacity: 200, // Gbps
+                        contacts: []
+                    });
+                }
+            }
+
+            createISLinks();
+            calculateRoute();
+        }
+
+        // Calcular posición orbital
+        function calculateSatellitePosition(altitude, inclination, raan, meanAnomaly) {
+            const a = EARTH_RADIUS + altitude;
+            const incRad = Cesium.Math.toRadians(inclination);
+            const raanRad = Cesium.Math.toRadians(raan);
+            const maRad = Cesium.Math.toRadians(meanAnomaly);
+
+            // Simplificación: órbita circular
+            const x = a * (Math.cos(raanRad) * Math.cos(maRad) - Math.sin(raanRad) * Math.sin(maRad) * Math.cos(incRad));
+            const y = a * (Math.sin(raanRad) * Math.cos(maRad) + Math.cos(raanRad) * Math.sin(maRad) * Math.cos(incRad));
+            const z = a * Math.sin(maRad) * Math.sin(incRad);
+
+            return Cesium.Cartesian3.fromElements(x * 1000, y * 1000, z * 1000);
+        }
+
+        // Crear enlaces ISL
+        function createISLinks() {
+            links.forEach(link => viewer.entities.remove(link));
+            links = [];
+
+            satellites.forEach((sat, i) => {
+                satellites.forEach((other, j) => {
+                    if (i >= j) return;
+
+                    const distance = calculateDistance(sat, other);
+                    const inSamePlane = sat.plane === other.plane;
+                    const isAdjacent = inSamePlane && Math.abs(sat.index - other.index) === 1;
+                    const isCrossPlane = !inSamePlane && distance < 3000;
+
+                    if (isAdjacent || isCrossPlane) {
+                        const isOptical = distance < 2500;
+                        const color = isOptical ? 
+                            Cesium.Color.CYAN.withAlpha(0.4) : 
+                            Cesium.Color.ORANGE.withAlpha(0.3);
+
+                        if ((isOptical && config.showOptical) || (!isOptical && config.showRF)) {
+                            const link = viewer.entities.add({
+                                polyline: {
+                                    positions: new Cesium.CallbackProperty(() => {
+                                        return [
+                                            sat.entity.position.getValue(viewer.clock.currentTime),
+                                            other.entity.position.getValue(viewer.clock.currentTime)
+                                        ];
+                                    }, false),
+                                    width: isOptical ? 2 : 1,
+                                    material: color,
+                                    arcType: Cesium.ArcType.NONE
+                                }
+                            });
+
+                            links.push(link);
+                            
+                            // Registrar contacto
+                            sat.contacts.push({
+                                target: other.id,
+                                type: isOptical ? 'optical' : 'rf',
+                                bandwidth: isOptical ? 150 : 5,
+                                distance: distance
+                            });
+                        }
+                    }
+                });
+            });
+        }
+
+        // Calcular distancia entre satélites
+        function calculateDistance(sat1, sat2) {
+            const pos1 = sat1.entity.position.getValue(viewer.clock.currentTime);
+            const pos2 = sat2.entity.position.getValue(viewer.clock.currentTime);
+            
+            if (!pos1 || !pos2) return Infinity;
+            
+            return Cesium.Cartesian3.distance(pos1, pos2) / 1000; // km
+        }
+
+        // Algoritmo CGR simplificado
+        function calculateRoute() {
+            if (satellites.length < 2) return;
+
+            // Seleccionar origen y destino aleatorios
+            const source = satellites[Math.floor(Math.random() * satellites.length)];
+            const dest = satellites[Math.floor(Math.random() * satellites.length)];
+
+            if (source === dest) return;
+
+            // Dijkstra simplificado con métricas de latencia
+            const distances = {};
+            const previous = {};
+            const unvisited = new Set();
+
+            satellites.forEach(sat => {
+                distances[sat.id] = Infinity;
+                previous[sat.id] = null;
+                unvisited.add(sat.id);
+            });
+
+            distances[source.id] = 0;
+
+            while (unvisited.size > 0) {
+                let current = null;
+                let minDist = Infinity;
+
+                unvisited.forEach(id => {
+                    if (distances[id] < minDist) {
+                        minDist = distances[id];
+                        current = id;
+                    }
+                });
+
+                if (current === dest.id) break;
+                if (minDist === Infinity) break;
+
+                unvisited.delete(current);
+
+                const currentSat = satellites.find(s => s.id === current);
+                currentSat.contacts.forEach(contact => {
+                    const alt = distances[current] + (contact.distance / contact.bandwidth);
+                    if (alt < distances[contact.target]) {
+                        distances[contact.target] = alt;
+                        previous[contact.target] = current;
+                    }
+                });
+            }
+
+            // Reconstruir ruta
+            activeRoute = [];
+            let current = dest.id;
+            while (previous[current]) {
+                activeRoute.unshift(current);
+                current = previous[current];
+            }
+            activeRoute.unshift(source.id);
+
+            visualizeRoute();
+            updateMetrics();
+        }
+
+        // Visualizar ruta CGR
+        function visualizeRoute() {
+            // Limpiar rutas anteriores
+            viewer.entities.values.forEach(entity => {
+                if (entity.name && entity.name.startsWith('ROUTE')) {
+                    viewer.entities.remove(entity);
+                }
+            });
+
+            if (!config.showRouting || activeRoute.length < 2) return;
+
+            for (let i = 0; i < activeRoute.length - 1; i++) {
+                const sat1 = satellites.find(s => s.id === activeRoute[i]);
+                const sat2 = satellites.find(s => s.id === activeRoute[i + 1]);
+
+                viewer.entities.add({
+                    name: `ROUTE-${i}`,
+                    polyline: {
+                        positions: new Cesium.CallbackProperty(() => {
+                            return [
+                                sat1.entity.position.getValue(viewer.clock.currentTime),
+                                sat2.entity.position.getValue(viewer.clock.currentTime)
+                            ];
+                        }, false),
+                        width: 4,
+                        material: new Cesium.PolylineGlowMaterialProperty({
+                            glowPower: 0.3,
+                            color: Cesium.Color.LIME
+                        })
+                    }
+                });
+            }
+        }
+
+        // Actualizar métricas
+        function updateMetrics() {
+            document.getElementById('activeLinks').textContent = links.length;
+            
+            const totalBandwidth = satellites.reduce((sum, sat) => {
+                return sum + sat.contacts.reduce((s, c) => s + c.bandwidth, 0);
+            }, 0) / 2; // Dividir por 2 porque contamos cada enlace dos veces
+            
+            document.getElementById('throughput').textContent = `${totalBandwidth.toFixed(1)} Gbps`;
+            
+            const latency = activeRoute.length > 1 ? (activeRoute.length - 1) * 5 + 20 : 0;
+            document.getElementById('latency').textContent = `${latency} ms`;
+            
+            document.getElementById('hops').textContent = Math.max(0, activeRoute.length - 1);
+            
+            const coverage = Math.min(100, (satellites.length / 24) * 100);
+            document.getElementById('coverage').textContent = `${coverage.toFixed(0)}%`;
+            
+            document.getElementById('bundles').textContent = Math.floor(Math.random() * 50 + 100);
+            document.getElementById('stored').textContent = (Math.random() * 500 + 100).toFixed(1);
+
+            // Actualizar lista de contactos
+            updateContactList();
+        }
+
+        function updateContactList() {
+            const contactList = document.getElementById('contactList');
+            contactList.innerHTML = '';
+            
+            const upcomingContacts = [];
+            satellites.forEach(sat => {
+                sat.contacts.forEach(contact => {
+                    upcomingContacts.push({
+                        from: sat.id,
+                        to: contact.target,
+                        type: contact.type,
+                        bw: contact.bandwidth
+                    });
+                });
+            });
+
+            upcomingContacts.slice(0, 8).forEach(contact => {
+                const div = document.createElement('div');
+                div.style.padding = '4px';
+                div.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+                div.innerHTML = `
+                    <span style="color: #4fc3f7;">SAT-${contact.from}</span> → 
+                    <span style="color: #4fc3f7;">SAT-${contact.to}</span>
+                    <span class="link-type ${contact.type}">${contact.bw} Gbps</span>
+                `;
+                contactList.appendChild(div);
+            });
+        }
+
+        // Event listeners
+        document.getElementById('satCount').addEventListener('input', (e) => {
+            config.satCount = parseInt(e.target.value);
+            document.getElementById('satCountDisplay').textContent = config.satCount;
+            createConstellation();
+        });
+
+        document.getElementById('altitude').addEventListener('input', (e) => {
+            config.altitude = parseInt(e.target.value);
+            document.getElementById('altDisplay').textContent = config.altitude;
+            createConstellation();
+        });
+
+        document.getElementById('simSpeed').addEventListener('input', (e) => {
+            config.simSpeed = parseInt(e.target.value);
+            document.getElementById('speedDisplay').textContent = `${config.simSpeed}x`;
+            viewer.clock.multiplier = config.simSpeed;
+        });
+
+        document.getElementById('showOptical').addEventListener('change', (e) => {
+            config.showOptical = e.target.checked;
+            createISLinks();
+        });
+
+        document.getElementById('showRF').addEventListener('change', (e) => {
+            config.showRF = e.target.checked;
+            createISLinks();
+        });
+
+        document.getElementById('showRouting').addEventListener('change', (e) => {
+            config.showRouting = e.target.checked;
+            visualizeRoute();
+        });
+
+        function toggleAnimation() {
+            viewer.clock.shouldAnimate = !viewer.clock.shouldAnimate;
+        }
+
+        function resetView() {
+            viewer.camera.flyHome(1);
+        }
+
+        // Actualización continua
+        setInterval(() => {
+            if (viewer.clock.shouldAnimate) {
+                updateMetrics();
+            }
+        }, 1000);
+
+        // Inicializar
+        viewer.clock.multiplier = config.simSpeed;
+        createConstellation();
+        
+        // Ajustar cámara inicial
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(0, 30, 15000000),
+            orientation: {
+                heading: 0,
+                pitch: Cesium.Math.toRadians(-45),
+                roll: 0
+            },
+            duration: 2
+        });
+    </script>
+</body>
+</html>
